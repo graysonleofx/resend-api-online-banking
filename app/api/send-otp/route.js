@@ -5,6 +5,12 @@ import {Resend} from 'resend';
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(req) {
+  // CORS headers
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Content-Type': 'application/json',
+  };
+
   // Destructure the necessary fields from the request body
   const { email, otp } = await req.json();
 
@@ -45,11 +51,11 @@ export async function POST(req) {
     });
     // console.log('Resend  Response:', data);
 
-    return Response.json({ success: true, data, message: 'Email sent successfully' });
+    return Response.json({ success: true, data, message: 'Email sent successfully' }, { headers });
 
   } catch (error) {
     console.error('Error sending email:', error);
-    return new Response.json({ success: false, message: 'Error sending email', status: 500, error });
+    return new Response.json({ success: false, message: 'Error sending email', status: 500, error }, { headers });
   }
 }
 // export async function POST(req) {
