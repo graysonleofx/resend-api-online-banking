@@ -176,7 +176,7 @@ export async function POST(req) {
     const data = await resend.emails.send({
       from: 'no-reply@federaledgefinance.com',
       to: email,
-      subject: `Verification Code: ${otp}`,
+      subject: `Verification Code`,
       html: `
         <div style="background:#f6f6f6;padding:0;margin:0; width:100%; font-family:Arial,sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background:#f6f6f6;padding:0;margin:0;">
