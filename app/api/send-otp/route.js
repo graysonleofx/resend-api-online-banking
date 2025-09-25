@@ -161,7 +161,7 @@ const cors = Cors({
   origin: '*', // Adjust to specific origin in production
 });
 
-export async function handler(req, res) {
+export default async function handler(req, res) {
  res.setHeader('Access-Control-Allow-Origin', '*');
  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, HEAD, OPTIONS');
  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
