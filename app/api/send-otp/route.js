@@ -152,18 +152,26 @@
 // // }
 
 
-import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
-import { Resend } from 'resend';
-
+import Cors from 'cors';
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-export async function POST(req) {
-  // CORS headers
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*', // Adjust to specific origin in production
-    'Content-Type': 'application/json',
-  };
+const cors = Cors({
+  methods: ['POST', 'GET', 'HEAD'],
+  origin: '*', // Adjust to specific origin in production
+});
+
+export async function handler(req, res) {
+ res.setHeader('Access-Control-Allow-Origin', '*');
+ res.setHeader('Access-Control-Allow-Methods', 'POST, GET, HEAD, OPTIONS');
+ res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Method Not Allowed' });
+  }
 
   try {
     // Destructure the necessary fields from the request
@@ -177,9 +185,9 @@ export async function POST(req) {
       html: `<div style="background:#f6f6f6;padding:0;margin:0;width:100%;font-family:Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f6f6f6;padding:0;margin:0;"><tr><td style="background:#f6f6f6;padding:0;margin:0;" align="center"><table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;width:100%;padding:0;"><tr><td>Your OTP Code: ${otp}</td></tr></table></td></tr></table></div>`,
     });
 
-    return NextResponse.json({ success: true, message: 'OTP sent successfully' }, { headers: corsHeaders });
+    return res.status(200).json({ success: true, data, message: 'Email sent successfully' });
   } catch (error) {
     console.error('Failed to send OTP email:', error.message);
-    return NextResponse.json({ success: false, message: 'Failed to send OTP email' }, { status: 500, headers: corsHeaders });
+    return res.status(500).json({ success: false, message: 'Failed to send OTP email' });
   }
 }
