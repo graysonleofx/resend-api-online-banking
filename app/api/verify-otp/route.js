@@ -118,16 +118,21 @@
 // }
 
 
-
 import { NextResponse } from 'next/server';
-import { otpStore } from "../send-otp/route"; // or remove if you fully use DB
-import { db } from '@/lib/db'; // make sure you import this correctly
+import { createClient } from '@supabase/supabase-js';
 
-export const runtime = 'edge';
+// ✅ Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+// ✅ Must use Node runtime (Edge does not support Supabase SDK fully)
+export const runtime = 'nodejs';
 
 export async function OPTIONS() {
   const headers = {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN || '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   };
@@ -145,42 +150,56 @@ export async function POST(req) {
       );
     }
 
-    // 🔹 Fetch OTP record (from DB or fallback store)
-    const record = await db.otp.findUnique({ where: { email } });
+    // 🔹 Fetch OTP record from Supabase
+    const { data: record, error: fetchError } = await supabase
+      .from('otp')
+      .select('*')
+      .eq('email', email)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('❌ Fetch error:', fetchError);
+      throw new Error('Database fetch failed');
+    }
 
     if (!record) {
       return NextResponse.json(
         { success: false, message: 'OTP not found or expired' },
-        { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } }
+        { status: 404, headers: { 'Access-Control-Allow-Origin': '*' } }
       );
     }
 
     // 🔹 Check expiration
-    if (record.expiresAt && record.expiresAt < Date.now()) {
+    const now = new Date();
+    const expiresAt = new Date(record.expires_at);
+    if (expiresAt < now) {
+      // delete expired OTP
+      await supabase.from('otp').delete().eq('email', email);
       return NextResponse.json(
         { success: false, message: 'OTP expired' },
         { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } }
       );
     }
 
-    // 🔹 Match OTP
-    if (record.otp !== otp) {
+    // 🔹 Validate OTP
+    if (String(record.otp) !== String(otp)) {
       return NextResponse.json(
         { success: false, message: 'Invalid OTP' },
         { status: 401, headers: { 'Access-Control-Allow-Origin': '*' } }
       );
     }
 
-    // ✅ OTP verified — delete or mark as used
-    await db.otp.delete({ where: { email } });
+    // ✅ OTP verified — delete it (one-time use)
+    await supabase.from('otp').delete().eq('email', email);
 
     return NextResponse.json(
       { success: true, message: 'OTP verified successfully' },
       { status: 200, headers: { 'Access-Control-Allow-Origin': '*' } }
     );
-
   } catch (error) {
-    console.error('OTP Verification Error:', error);
+    console.error('❌ OTP Verification Error:', error);
     return NextResponse.json(
       { success: false, message: 'Internal Server Error' },
       { status: 500, headers: { 'Access-Control-Allow-Origin': '*' } }

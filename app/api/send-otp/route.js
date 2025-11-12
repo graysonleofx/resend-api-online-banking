@@ -164,7 +164,13 @@
 
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
-import supabase from '../lib/supabaseClient';
+import { createClient } from '@supabase/supabase-js';
+
+// ✅ Initialize Supabase client (server-side)
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY // must be the service key for write access
+);
 
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -203,17 +209,22 @@ export async function POST(req) {
       .lt('expires_at', new Date().toISOString());
 
     // ✅ Save OTP to Supabase
-    const { error: insertError } = await supabase.from('otp').insert([
-      {
-        email,
-        otp,
-        expires_at: expiresAt.toISOString(),
-      },
-    ]);
+    try{
+        const { error: insertError } = await supabase.from('otp').insert([
+          {
+          email,
+          otp,
+          expires_at: expiresAt.toISOString(),
+        },
+      ]);
 
-    if (insertError) {
-      console.error('❌ Supabase insert error:', insertError);
-      throw new Error('Database error');
+      if (insertError) {
+        console.error('❌ Supabase insert error:', insertError);
+        throw new Error('Database error');
+      }
+    } catch (err) {
+      console.error('ErrorSupabase insert:', err.message);
+      return;
     }
 
     // ✅ Send email using Resend
