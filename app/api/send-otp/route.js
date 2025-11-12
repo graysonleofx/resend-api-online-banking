@@ -73,20 +73,108 @@
 
 
 
+// import { NextResponse } from 'next/server';
+// import { Resend } from 'resend';
+
+// const resend = new Resend(process.env.RESEND_API_KEY);
+
+// export const runtime = 'edge';
+
+// // ✅ Global OTP Store
+// // Works only when SAME SERVER handles send + verify
+// export let otpStore = {};
+
+// export async function OPTIONS() {
+//   const headers = {
+//     'Access-Control-Allow-Origin': '*',
+//     'Access-Control-Allow-Methods': 'POST, OPTIONS',
+//     'Access-Control-Allow-Headers': 'Content-Type',
+//   };
+//   return NextResponse.json({}, { headers, status: 200 });
+// }
+
+// export async function POST(req) {
+//   try {
+//     const { email } = await req.json();
+
+//     if (!email) {
+//       return NextResponse.json(
+//         { success: false, message: "Email is required" },
+//         { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } }
+//       );
+//     }
+
+//     // ✅ Backend generates OTP (NOT the frontend)
+//     const otp = Math.floor(100000 + Math.random() * 900000);
+
+//     // ✅ Store OTP in memory
+//     // otpStore[email] = {
+//     //   otp,
+//     //   createdAt: Date.now(),
+//     // };
+
+//     await db.otp.create({
+//       data: {
+//         email,
+//         otp,
+//         expiresAt: new Date(Date.now() + 5 * 60 * 1000)
+//       }
+//     })
+
+//     // ✅ Send email via Resend
+//     const data = await resend.emails.send({
+//       from: 'no-reply@federaledgefinance.com',
+//       to: email,
+//       subject: 'Verification Code',
+//       html: `
+//         <div style="font-family:Arial,sans-serif;">
+//           <h2>Your Verification Code</h2>
+//           <p>Your OTP code is:</p>
+//           <h1 style="letter-spacing:4px;">${otp}</h1>
+//         </div>
+//       `,
+//     });
+
+//     console.log("✅ OTP generated:", otp);
+
+//     return NextResponse.json(
+//       {
+//         success: true,
+//         message: "OTP email sent successfully",
+//         // ✅ keep this during development; remove in production
+//         debugOtp: otp,
+//       },
+//       { status: 200, headers: { 'Access-Control-Allow-Origin': '*' } }
+//     );
+
+//   } catch (error) {
+//     console.error("❌ Failed to send OTP:", error);
+//     return NextResponse.json(
+//       { success: false, message: 'Failed to send OTP email' },
+//       { status: 500, headers: { 'Access-Control-Allow-Origin': '*' } }
+//     );
+//   }
+// }
+
+
+
+
+
+
+
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import supabase from '../lib/supabaseClient';
+
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-export const runtime = 'edge';
-
-// ✅ Global OTP Store
-// Works only when SAME SERVER handles send + verify
-export let otpStore = {};
+// ✅ Use Node runtime (not Edge)
+export const runtime = 'nodejs';
 
 export async function OPTIONS() {
   const headers = {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN || '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   };
@@ -99,22 +187,37 @@ export async function POST(req) {
 
     if (!email) {
       return NextResponse.json(
-        { success: false, message: "Email is required" },
+        { success: false, message: 'Email is required' },
         { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } }
       );
     }
 
-    // ✅ Backend generates OTP (NOT the frontend)
+    // ✅ Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 min
 
-    // ✅ Store OTP in memory
-    otpStore[email] = {
-      otp,
-      createdAt: Date.now(),
-    };
+    // ✅ Optional: clean up old OTPs
+    await supabase
+      .from('otp')
+      .delete()
+      .lt('expires_at', new Date().toISOString());
 
-    // ✅ Send email via Resend
-    const data = await resend.emails.send({
+    // ✅ Save OTP to Supabase
+    const { error: insertError } = await supabase.from('otp').insert([
+      {
+        email,
+        otp,
+        expires_at: expiresAt.toISOString(),
+      },
+    ]);
+
+    if (insertError) {
+      console.error('❌ Supabase insert error:', insertError);
+      throw new Error('Database error');
+    }
+
+    // ✅ Send email using Resend
+    await resend.emails.send({
       from: 'no-reply@federaledgefinance.com',
       to: email,
       subject: 'Verification Code',
@@ -123,27 +226,27 @@ export async function POST(req) {
           <h2>Your Verification Code</h2>
           <p>Your OTP code is:</p>
           <h1 style="letter-spacing:4px;">${otp}</h1>
+          <p>This code expires in 5 minutes.</p>
         </div>
       `,
     });
 
-    console.log("✅ OTP generated:", otp);
+    console.log('✅ OTP generated and sent:', otp);
 
     return NextResponse.json(
       {
         success: true,
-        message: "OTP email sent successfully",
-        // ✅ keep this during development; remove in production
-        debugOtp: otp,
+        message: 'OTP email sent successfully',
+        debugOtp: process.env.NODE_ENV === 'development' ? otp : undefined,
       },
       { status: 200, headers: { 'Access-Control-Allow-Origin': '*' } }
     );
-
   } catch (error) {
-    console.error("❌ Failed to send OTP:", error);
+    console.error('❌ Failed to send OTP:', error);
     return NextResponse.json(
       { success: false, message: 'Failed to send OTP email' },
       { status: 500, headers: { 'Access-Control-Allow-Origin': '*' } }
     );
   }
 }
+
